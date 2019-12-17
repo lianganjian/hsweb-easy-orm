@@ -42,8 +42,7 @@ public abstract class RDBTableMetadataParser implements TableMetadataParser {
     protected SyncSqlExecutor getSqlExecutor() {
         if (this.sqlExecutor == null) {
 
-            this.sqlExecutor = schema.findFeature(SyncSqlExecutor.ID)
-                    .orElseThrow(() -> new UnsupportedOperationException("unsupported SyncSqlExecutor"));
+            this.sqlExecutor = schema.findFeatureNow(SyncSqlExecutor.ID);
         }
         return this.sqlExecutor;
     }
@@ -151,10 +150,10 @@ public abstract class RDBTableMetadataParser implements TableMetadataParser {
             DataType dataType = getDialect().convertDataType(data_type);
 
             instance.setType(dataType);
-            instance.setDataType(getDialect().buildColumnDataType(instance));
+           // instance.setDataType(getDialect().buildColumnDataType(instance));
 
             instance.findFeature(ValueCodecFactory.ID)
-                    .map(factory -> factory.createValueCodec(instance))
+                    .flatMap(factory -> factory.createValueCodec(instance))
                     .ifPresent(instance::setValueCodec);
             return true;
         }

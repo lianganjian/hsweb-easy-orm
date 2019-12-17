@@ -16,13 +16,11 @@ public class ExecutableQueryOperator extends BuildParameterQueryOperator {
 
     @Override
     public SqlRequest getSql() {
-        return metadata.findFeature(QuerySqlBuilder.ID)
-                .map(builder -> builder.build(this.getParameter()))
-                .orElseThrow(() -> new UnsupportedOperationException("unsupported query operator"));
+        return metadata.findFeatureNow(QuerySqlBuilder.ID).build(this.getParameter());
     }
 
     @Override
     public <E, R> QueryResultOperator<E, R> fetch(ResultWrapper<E, R> wrapper) {
-        return new QueryResultOperator<>(getSql(), metadata, wrapper);
+        return new DefaultQueryResultOperator<>(this::getSql, metadata, wrapper);
     }
 }

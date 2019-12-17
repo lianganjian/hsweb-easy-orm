@@ -6,6 +6,7 @@ import org.hswebframework.ezorm.core.meta.AbstractColumnMetadata;
 import org.hswebframework.ezorm.core.meta.ColumnMetadata;
 import org.hswebframework.ezorm.core.meta.Feature;
 import org.hswebframework.ezorm.core.meta.ObjectType;
+import org.hswebframework.ezorm.rdb.executor.NullValue;
 import org.hswebframework.ezorm.rdb.metadata.dialect.Dialect;
 
 import java.sql.JDBCType;
@@ -106,6 +107,10 @@ public class RDBColumnMetadata extends AbstractColumnMetadata implements ColumnM
         setType(JdbcDataType.of(jdbcType, javaType));
     }
 
+    public int getPrecision(int defaultPrecision) {
+        return precision <= 0 ? defaultPrecision : precision;
+    }
+
     public void setType(DataType dataType) {
         this.javaType = dataType.getJavaType();
         this.type = dataType;
@@ -120,10 +125,10 @@ public class RDBColumnMetadata extends AbstractColumnMetadata implements ColumnM
     }
 
     public String getDataType() {
-        if (dataType == null) {
-            return getDialect().buildColumnDataType(this);
+        if (dataType != null) {
+            return dataType;
         }
-        return dataType;
+        return getDialect().buildColumnDataType(this);
     }
 
     public SQLType getSqlType() {
@@ -156,9 +161,17 @@ public class RDBColumnMetadata extends AbstractColumnMetadata implements ColumnM
     }
 
     @Override
+    public Object encode(Object data) {
+        if (data instanceof NullValue) {
+            return data;
+        }
+        return super.encode(data);
+    }
+
+    @Override
     public String toString() {
         StringBuilder builder = new StringBuilder(name);
-        builder.append(" ").append(dataType);
+        builder.append(" ").append(type != null ? getDataType() : "");
 
         if (javaType != null) {
             builder.append(" ").append(javaType.getSimpleName());
@@ -206,11 +219,15 @@ public class RDBColumnMetadata extends AbstractColumnMetadata implements ColumnM
     public boolean isChanged(RDBColumnMetadata after) {
 
         return !this.getName().equals(this.getPreviousName())
-                || !this.getType().getId().equals(after.getType().getId())
-                || (this.getDataType() != null && !this.getDataType().equals(after.getDataType()))
-                || this.getLength() != after.getLength()
-                || this.getScale() != after.getScale()
-                || (this.getColumnDefinition() != null && !this.getColumnDefinition().equals(after.getColumnDefinition()));
+                ||(getType() != null && !getSqlType().equals(after.getSqlType()))
+                ||getLength()!=after.getLength()
+                ||getPrecision()!=after.getPrecision()
+                ||getScale()!=after.getScale();
+    }
+
+    public void setLength(int length) {
+        this.length = length;
+        this.setDataType(null);
     }
 
 

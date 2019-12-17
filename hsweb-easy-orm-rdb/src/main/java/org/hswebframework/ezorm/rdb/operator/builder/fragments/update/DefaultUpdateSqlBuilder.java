@@ -4,8 +4,9 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import org.apache.commons.collections.CollectionUtils;
 import org.hswebframework.ezorm.core.param.Term;
+import org.hswebframework.ezorm.rdb.executor.NullValue;
 import org.hswebframework.ezorm.rdb.executor.SqlRequest;
-import org.hswebframework.ezorm.rdb.metadata.ForeignKeyMetadata;
+import org.hswebframework.ezorm.rdb.metadata.key.ForeignKeyMetadata;
 import org.hswebframework.ezorm.rdb.metadata.RDBColumnMetadata;
 import org.hswebframework.ezorm.rdb.metadata.RDBTableMetadata;
 import org.hswebframework.ezorm.rdb.operator.builder.fragments.*;
@@ -45,6 +46,11 @@ public class DefaultUpdateSqlBuilder extends AbstractTermsFragmentBuilder<Update
             SqlFragments columnFragments = table.getColumn(column.getColumn())
                     .filter(RDBColumnMetadata::isUpdatable)
                     .<SqlFragments>map(columnMetadata -> {
+                        Object value = column.getValue();
+                        if (value == null) {
+                            return EmptySqlFragments.INSTANCE;
+                        }
+
                         PrepareSqlFragments sqlFragments = PrepareSqlFragments.of();
                         sqlFragments.addSql(columnMetadata.getQuoteName(), "=");
 
@@ -53,12 +59,19 @@ public class DefaultUpdateSqlBuilder extends AbstractTermsFragmentBuilder<Update
                                     .addSql(((NativeSql) column).getSql())
                                     .addParameter(((NativeSql) column).getParameters());
                         }
+                        if (value instanceof NativeSql) {
+                            return PrepareSqlFragments.of()
+                                    .addSql(columnMetadata.getQuoteName(), "=")
+                                    .addSql(((NativeSql) column.getValue()).getSql())
+                                    .addParameter(((NativeSql) column.getValue()).getParameters());
+                        }
+
                         sqlFragments.addFragments(ofNullable(column.getFunction())
                                 .flatMap(function -> columnMetadata.findFeature(createFeatureId(function)))
                                 .map(builder -> builder.create(columnMetadata.getName(), columnMetadata, column.getOpts()))
                                 .orElseGet(() -> PrepareSqlFragments.of()
                                         .addSql("?")
-                                        .addParameter(columnMetadata.encode(column.getValue()))));
+                                        .addParameter(columnMetadata.encode(value))));
 
                         return sqlFragments;
 
@@ -102,9 +115,9 @@ public class DefaultUpdateSqlBuilder extends AbstractTermsFragmentBuilder<Update
                 columnName = arr[1];
             } else {
                 return table.getForeignKey(arr[0])
-                        .flatMap(key -> key.getSourceColumn()
-                                .getFeature(ForeignKeyTermFragmentBuilder.ID)
-                                .map(builder -> builder.createFragments(key.getName(), key, createForeignKeyTerm(key, term))))
+                        .flatMap(key -> key.getSource()
+                                .findFeature(ForeignKeyTermFragmentBuilder.ID)
+                                .map(builder -> builder.createFragments(table.getName(), key, createForeignKeyTerm(key, term))))
                         .orElse(EmptySqlFragments.INSTANCE);
             }
         }

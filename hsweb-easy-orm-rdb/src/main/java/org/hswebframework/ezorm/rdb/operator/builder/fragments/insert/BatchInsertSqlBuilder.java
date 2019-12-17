@@ -2,6 +2,7 @@ package org.hswebframework.ezorm.rdb.operator.builder.fragments.insert;
 
 import lombok.AllArgsConstructor;
 import org.hswebframework.ezorm.core.RuntimeDefaultValue;
+import org.hswebframework.ezorm.rdb.executor.NullValue;
 import org.hswebframework.ezorm.rdb.executor.SqlRequest;
 import org.hswebframework.ezorm.rdb.metadata.*;
 import org.hswebframework.ezorm.rdb.operator.builder.fragments.EmptySqlFragments;
@@ -16,12 +17,15 @@ import java.util.*;
 
 import static java.util.Optional.*;
 
-@AllArgsConstructor(staticName = "of")
+@AllArgsConstructor
 @SuppressWarnings("all")
 public class BatchInsertSqlBuilder implements InsertSqlBuilder {
 
     private RDBTableMetadata table;
 
+    public static BatchInsertSqlBuilder of(RDBTableMetadata table){
+        return new BatchInsertSqlBuilder(table);
+    }
     @Override
     public SqlRequest build(InsertOperatorParameter parameter) {
         PrepareSqlFragments fragments = PrepareSqlFragments.of();
@@ -73,14 +77,21 @@ public class BatchInsertSqlBuilder implements InsertSqlBuilder {
             int vIndex = 0;
             for (Map.Entry<Integer, RDBColumnMetadata> entry : indexMapping.entrySet()) {
                 int valueIndex = entry.getKey();
-                RDBColumnMetadata column = entry.getValue();
-
-                Object value = column.encode(valueLen < valueIndex ? null : values.get(valueIndex));
                 if (vIndex++ != 0) {
                     fragments.addSql(",");
                 }
-                if (value == null && column.getDefaultValue() instanceof RuntimeDefaultValue) {
-                    value = ((RuntimeDefaultValue) column.getDefaultValue()).getValue();
+                SqlFragments function = functionValues.get(valueIndex);
+                if (null != function) {
+                    fragments.addFragments(function);
+                    continue;
+                }
+                RDBColumnMetadata column = entry.getValue();
+
+                Object value = valueLen <= valueIndex ? null : values.get(valueIndex);
+
+                if ((value == null || value instanceof NullValue)
+                        && column.getDefaultValue() instanceof RuntimeDefaultValue) {
+                    value = column.getDefaultValue().get();
                 }
                 if (value instanceof NativeSql) {
                     fragments
@@ -88,19 +99,21 @@ public class BatchInsertSqlBuilder implements InsertSqlBuilder {
                             .addParameter(((NativeSql) value).getParameters());
                     continue;
                 }
-                SqlFragments function = functionValues.get(valueIndex);
-
-                if (null != function) {
-                    fragments.addFragments(function);
-                } else {
-                    fragments.addSql("?").addParameter(value);
+                if (value == null) {
+                    value = NullValue.of(column.getType());
                 }
+                fragments.addSql("?").addParameter(column.encode(value));
             }
 
             fragments.addSql(")");
+            afterValues(parameter.getColumns(),values,fragments);
         }
 
         return fragments.toRequest();
+    }
+
+    protected void afterValues(Set<InsertColumn> columns, List<Object> values, PrepareSqlFragments sql) {
+
     }
 
 

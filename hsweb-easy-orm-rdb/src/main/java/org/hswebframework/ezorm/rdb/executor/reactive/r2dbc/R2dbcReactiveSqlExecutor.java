@@ -66,8 +66,9 @@ public abstract class R2dbcReactiveSqlExecutor implements ReactiveSqlExecutor {
     public Mono<Integer> update(Publisher<SqlRequest> request) {
         return this.doExecute(toFlux(request))
                 .flatMap(result -> Mono.from(result.getRowsUpdated()).defaultIfEmpty(0))
+                .doOnNext(count -> logger.debug("==>    Updated: {}", count))
                 .collect(Collectors.summingInt(Integer::intValue))
-                .doOnNext(count -> logger.debug("==>    Updated: {}", count));
+                .defaultIfEmpty(0);
     }
 
     @Override
@@ -129,6 +130,9 @@ public abstract class R2dbcReactiveSqlExecutor implements ReactiveSqlExecutor {
     }
 
     protected void bindNull(Statement statement, int index, Class type) {
+        if (type == Date.class) {
+            type = LocalDateTime.class;
+        }
         statement.bindNull(getBindSymbol() + (index + getBindFirstIndex()), type);
     }
 
@@ -151,7 +155,7 @@ public abstract class R2dbcReactiveSqlExecutor implements ReactiveSqlExecutor {
             if (parameter == null) {
                 bindNull(statement, index, String.class);
             } else if (parameter instanceof NullValue) {
-                bindNull(statement, index, ((NullValue) parameter).getType());
+                bindNull(statement, index, ((NullValue) parameter).getDataType().getJavaType());
             } else {
                 bind(statement, index, parameter);
             }

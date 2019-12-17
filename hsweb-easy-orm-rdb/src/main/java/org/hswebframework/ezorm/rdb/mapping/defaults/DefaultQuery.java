@@ -1,11 +1,10 @@
 package org.hswebframework.ezorm.rdb.mapping.defaults;
 
-import org.hswebframework.ezorm.core.NestConditional;
-import org.hswebframework.ezorm.core.SimpleNestConditional;
-import org.hswebframework.ezorm.core.TermTypeConditionalSupport;
+import org.hswebframework.ezorm.core.*;
 import org.hswebframework.ezorm.core.param.QueryParam;
 import org.hswebframework.ezorm.core.param.SqlTerm;
 import org.hswebframework.ezorm.core.param.Term;
+import org.hswebframework.ezorm.rdb.events.ContextKeyValue;
 import org.hswebframework.ezorm.rdb.events.EventContext;
 import org.hswebframework.ezorm.rdb.events.EventType;
 import org.hswebframework.ezorm.rdb.executor.wrapper.ResultWrapper;
@@ -13,6 +12,7 @@ import org.hswebframework.ezorm.rdb.mapping.EntityColumnMapping;
 import org.hswebframework.ezorm.rdb.mapping.MappingFeatureType;
 import org.hswebframework.ezorm.rdb.mapping.DSLQuery;
 import org.hswebframework.ezorm.rdb.metadata.TableOrViewMetadata;
+import org.hswebframework.ezorm.rdb.metadata.key.ForeignKeyMetadata;
 import org.hswebframework.ezorm.rdb.operator.DMLOperator;
 import org.hswebframework.ezorm.rdb.operator.dml.SortOrderSupplier;
 import org.hswebframework.ezorm.rdb.operator.dml.query.SelectColumn;
@@ -46,18 +46,47 @@ public class DefaultQuery<T, ME extends DSLQuery> implements DSLQuery<ME> {
 
     protected List<SortOrder> orders = new ArrayList<>();
 
-    public DefaultQuery(TableOrViewMetadata tableMetadata, EntityColumnMapping mapping, DMLOperator operator, ResultWrapper<T, ?> wrapper) {
+    public DefaultQuery(TableOrViewMetadata tableMetadata,
+                        EntityColumnMapping mapping,
+                        DMLOperator operator,
+                        ResultWrapper<T, ?> wrapper,
+                        ContextKeyValue<?>... keyValues) {
         this.operator = operator;
         this.tableName = tableMetadata.getName();
         this.wrapper = wrapper;
         this.tableMetadata = tableMetadata;
         this.columnMapping = mapping;
+        param.setPaging(false);
     }
 
     @Override
     public ME select(String... columns) {
         param.includes(columns);
         return (ME) this;
+    }
+
+    @Override
+    @SafeVarargs
+    public final <T> ME select(StaticMethodReferenceColumn<T>... column) {
+        return select(Arrays.stream(column).map(StaticMethodReferenceColumn::getColumn).toArray(String[]::new));
+    }
+
+    @SafeVarargs
+    @Override
+    public final <T> ME select(MethodReferenceColumn<T>... column) {
+        return select(Arrays.stream(column).map(MethodReferenceColumn::getColumn).toArray(String[]::new));
+    }
+
+    @SafeVarargs
+    @Override
+    public final <T> ME selectExcludes(StaticMethodReferenceColumn<T>... column) {
+        return selectExcludes(Arrays.stream(column).map(StaticMethodReferenceColumn::getColumn).toArray(String[]::new));
+    }
+
+    @SafeVarargs
+    @Override
+    public final <T> ME selectExcludes(MethodReferenceColumn<T>... column) {
+        return selectExcludes(Arrays.stream(column).map(MethodReferenceColumn::getColumn).toArray(String[]::new));
     }
 
     @Override
@@ -90,21 +119,32 @@ public class DefaultQuery<T, ME extends DSLQuery> implements DSLQuery<ME> {
         return (ME) this;
     }
 
-    private boolean isSelectInclude(Map.Entry<String, String> entry) {
-        return param.getIncludes().isEmpty() || param.getIncludes().containsAll(Arrays.asList(entry.getKey(), entry.getValue()));
+    private boolean isSelectInclude(SelectColumn column) {
+        return param.getIncludes().isEmpty() ||
+                param.getIncludes()
+                        .stream()
+                        .anyMatch(s -> s.equals(column.getColumn()) || s.equals(column.getAlias()));
     }
 
-    private boolean isSelectExclude(Map.Entry<String, String> entry) {
-        return param.getExcludes().containsAll(Arrays.asList(entry.getKey(), entry.getValue()));
+    private boolean isSelectExclude(SelectColumn column) {
+        return param.getExcludes()
+                .stream()
+                .anyMatch(s -> s.equals(column.getColumn()) || s.equals(column.getAlias()));
     }
 
     protected SelectColumn[] getSelectColumn() {
-        return columnMapping.getColumnPropertyMapping()
-                .entrySet()
-                .stream()
+
+        return Stream.concat(
+                tableMetadata.getForeignKeys().stream()
+                        .map(key -> key.getAlias() == null ? key.getTarget().getName() : key.getAlias())
+                        .map(alias -> alias.concat(".*"))
+                        .map(name -> SelectColumn.of(name))
+                , columnMapping.getColumnPropertyMapping()
+                        .entrySet()
+                        .stream()
+                        .map(entry -> SelectColumn.of(entry.getKey(), entry.getValue())))
                 .filter(this::isSelectInclude)
                 .filter(e -> !isSelectExclude(e))
-                .map(entry -> SelectColumn.of(entry.getKey(), entry.getValue()))
                 .toArray(SelectColumn[]::new);
     }
 

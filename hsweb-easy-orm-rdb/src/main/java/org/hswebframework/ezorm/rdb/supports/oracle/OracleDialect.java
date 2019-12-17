@@ -23,12 +23,15 @@ public class OracleDialect extends DefaultDialect {
         addDataTypeBuilder(JDBCType.INTEGER, (meta) -> "integer");
         addDataTypeBuilder(JDBCType.DOUBLE, (meta) -> "binary_double");
         addDataTypeBuilder(JDBCType.CLOB, (meta) -> "clob");
+        addDataTypeBuilder(JDBCType.LONGNVARCHAR, (meta) -> "clob");
         addDataTypeBuilder(JDBCType.BLOB, (meta) -> "blob");
         addDataTypeBuilder(JDBCType.BINARY, (meta) -> "blob");
-        addDataTypeBuilder(JDBCType.NUMERIC, (meta) -> StringUtils.concat("number(", meta.getPrecision(), ",", meta.getScale(), ")"));
-        addDataTypeBuilder(JDBCType.DECIMAL, (meta) -> StringUtils.concat("number(", meta.getPrecision(), ",", meta.getScale(), ")"));
+        addDataTypeBuilder(JDBCType.NUMERIC, (meta) -> StringUtils.concat("number(", meta.getPrecision(38), ",", meta.getScale(), ")"));
+        addDataTypeBuilder(JDBCType.DECIMAL, (meta) -> StringUtils.concat("number(", meta.getPrecision(38), ",", meta.getScale(), ")"));
         addDataTypeBuilder(JDBCType.BIGINT, (meta) -> "number(38,0)");
         addDataTypeBuilder(JDBCType.OTHER, (meta) -> "other");
+        registerDataType("longnvarchar", DataType.builder(JdbcDataType.of(JDBCType.LONGNVARCHAR, String.class), c -> "clob"));
+        registerDataType("longvarchar", DataType.builder(JdbcDataType.of(JDBCType.LONGVARCHAR, String.class), c -> "clob"));
 
         registerDataType("varchar2", DataType.builder(DataType.jdbc(JDBCType.VARCHAR, String.class),
                 column -> "varchar2(" + column.getLength() + ")"));
@@ -37,6 +40,7 @@ public class OracleDialect extends DefaultDialect {
                 column -> "nvarchar2(" + column.getLength() + ")"));
 
         registerDataType("date", JdbcDataType.of(JDBCType.TIMESTAMP, Date.class));
+        registerDataType("clob", JdbcDataType.of(JDBCType.LONGVARCHAR, String.class));
 
     }
 

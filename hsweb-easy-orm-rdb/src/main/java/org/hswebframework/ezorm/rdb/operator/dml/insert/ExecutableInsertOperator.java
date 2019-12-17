@@ -12,15 +12,15 @@ public class ExecutableInsertOperator extends BuildParameterInsertOperator {
 
     @Override
     public SqlRequest getSql() {
-        return table.findFeature(InsertSqlBuilder.ID)
-                .map(builder -> builder.build(getParameter()))
-                .orElseThrow(() -> new UnsupportedOperationException("table [" + table.getFullName() + " unsupported InsertSqlBuilder]"));
+        return table
+                .findFeatureNow(InsertSqlBuilder.ID)
+                .build(getParameter());
     }
 
     @Override
     public InsertResultOperator execute() {
 
-        return InsertResultOperator.of(table,getSql());
+        return DefaultInsertResultOperator.of(table, this::getSql);
 
     }
 }

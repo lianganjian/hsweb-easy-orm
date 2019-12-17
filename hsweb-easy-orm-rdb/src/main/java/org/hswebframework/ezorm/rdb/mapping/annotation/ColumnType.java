@@ -22,11 +22,13 @@ public @interface ColumnType {
      */
     String typeId() default "";
 
+    String name() default "";
+
     /**
      * @return JDBCType
      * @see DataType#getSqlType()
      */
-    JDBCType jdbcType() default JDBCType.OTHER;
+    JDBCType jdbcType() default JDBCType.VARCHAR;
 
     /**
      * @return 自定义java类型

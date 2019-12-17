@@ -1,5 +1,6 @@
 package org.hswebframework.ezorm.rdb.supports.mssql;
 
+import org.hswebframework.ezorm.rdb.metadata.DataType;
 import org.hswebframework.ezorm.rdb.metadata.JdbcDataType;
 import org.hswebframework.ezorm.rdb.metadata.dialect.DefaultDialect;
 import org.hswebframework.utils.StringUtils;
@@ -29,12 +30,15 @@ public class SqlServerDialect extends DefaultDialect {
         addDataTypeBuilder(JDBCType.BIGINT, (meta) -> "bigint");
         addDataTypeBuilder(JDBCType.DOUBLE, (meta) -> "double");
         addDataTypeBuilder(JDBCType.INTEGER, (meta) -> "int");
-        addDataTypeBuilder(JDBCType.NUMERIC, (meta) -> StringUtils.concat("numeric(", meta.getPrecision(), ",", meta.getScale(), ")"));
-        addDataTypeBuilder(JDBCType.DECIMAL, (meta) -> StringUtils.concat("numeric(", meta.getPrecision(), ",", meta.getScale(), ")"));
+        addDataTypeBuilder(JDBCType.NUMERIC, (meta) -> StringUtils.concat("numeric(", meta.getPrecision(32), ",", meta.getScale(), ")"));
+        addDataTypeBuilder(JDBCType.DECIMAL, (meta) -> StringUtils.concat("numeric(", meta.getPrecision(32), ",", meta.getScale(), ")"));
         addDataTypeBuilder(JDBCType.TINYINT, (meta) -> "tinyint");
         addDataTypeBuilder(JDBCType.BIGINT, (meta) -> "bigint");
         addDataTypeBuilder(JDBCType.OTHER, (meta) -> "other");
         addDataTypeBuilder(JDBCType.REAL, (meta) -> "real");
+
+        registerDataType("longnvarchar", DataType.builder(JdbcDataType.of(JDBCType.LONGNVARCHAR, String.class), c -> "text"));
+        registerDataType("longvarchar", DataType.builder(JdbcDataType.of(JDBCType.LONGVARCHAR, String.class), c -> "text"));
 
         registerDataType("datetime2", JdbcDataType.of(JDBCType.TIMESTAMP, java.util.Date.class));
         registerDataType("datetime", JdbcDataType.of(JDBCType.TIMESTAMP, java.util.Date.class));

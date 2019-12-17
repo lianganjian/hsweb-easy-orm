@@ -6,6 +6,9 @@ import lombok.SneakyThrows;
 import org.hswebframework.ezorm.core.meta.Feature;
 import org.hswebframework.ezorm.core.meta.ObjectMetadata;
 import org.hswebframework.ezorm.rdb.metadata.dialect.Dialect;
+import org.hswebframework.ezorm.rdb.metadata.key.ForeignKeyBuilder;
+import org.hswebframework.ezorm.rdb.metadata.key.ForeignKeyMetadata;
+import org.hswebframework.ezorm.rdb.metadata.key.LazyForeignKeyMetadata;
 import org.hswebframework.ezorm.rdb.operator.builder.fragments.query.JoinFragmentBuilder;
 import org.hswebframework.ezorm.rdb.operator.builder.fragments.query.QueryTermsFragmentBuilder;
 import org.hswebframework.ezorm.rdb.operator.builder.fragments.query.SelectColumnFragmentBuilder;
@@ -193,5 +196,13 @@ public abstract class AbstractTableOrViewMetadata implements TableOrViewMetadata
     @Override
     public String toString() {
         return FeatureUtils.metadataToString(this);
+    }
+
+    @Override
+    public void merge(TableOrViewMetadata metadata) {
+        metadata.getForeignKeys().forEach(this::addForeignKey);
+        metadata.getFeatureList().forEach(this::addFeature);
+        metadata.getColumns().forEach(this::addColumn);
+
     }
 }

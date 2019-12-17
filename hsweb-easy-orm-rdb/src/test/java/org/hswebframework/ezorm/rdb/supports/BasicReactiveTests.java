@@ -1,8 +1,14 @@
 package org.hswebframework.ezorm.rdb.supports;
 
 import lombok.extern.slf4j.Slf4j;
+import org.hswebframework.ezorm.core.DefaultValue;
+import org.hswebframework.ezorm.core.DefaultValueGenerator;
+import org.hswebframework.ezorm.core.RuntimeDefaultValue;
+import org.hswebframework.ezorm.core.meta.ObjectMetadata;
+import org.hswebframework.ezorm.rdb.events.EventContext;
+import org.hswebframework.ezorm.rdb.events.EventListener;
+import org.hswebframework.ezorm.rdb.events.EventType;
 import org.hswebframework.ezorm.rdb.executor.SqlRequests;
-import org.hswebframework.ezorm.rdb.executor.SyncSqlExecutor;
 import org.hswebframework.ezorm.rdb.executor.reactive.ReactiveSqlExecutor;
 import org.hswebframework.ezorm.rdb.executor.reactive.ReactiveSyncSqlExecutor;
 import org.hswebframework.ezorm.rdb.mapping.EntityColumnMapping;
@@ -10,7 +16,8 @@ import org.hswebframework.ezorm.rdb.mapping.MappingFeatureType;
 import org.hswebframework.ezorm.rdb.mapping.ReactiveRepository;
 import org.hswebframework.ezorm.rdb.mapping.SyncRepository;
 import org.hswebframework.ezorm.rdb.mapping.defaults.DefaultReactiveRepository;
-import org.hswebframework.ezorm.rdb.mapping.defaults.DefaultSyncRepository;
+import org.hswebframework.ezorm.rdb.mapping.defaults.SaveResult;
+import org.hswebframework.ezorm.rdb.mapping.defaults.record.Record;
 import org.hswebframework.ezorm.rdb.mapping.jpa.JpaEntityTableMetadataParser;
 import org.hswebframework.ezorm.rdb.mapping.wrapper.EntityResultWrapper;
 import org.hswebframework.ezorm.rdb.metadata.RDBDatabaseMetadata;
@@ -20,18 +27,17 @@ import org.hswebframework.ezorm.rdb.metadata.dialect.Dialect;
 import org.hswebframework.ezorm.rdb.operator.DatabaseOperator;
 import org.hswebframework.ezorm.rdb.operator.DefaultDatabaseOperator;
 import org.hswebframework.ezorm.rdb.operator.dml.insert.InsertOperator;
-import org.hswebframework.ezorm.rdb.operator.dml.query.SortOrder;
 import org.junit.After;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Date;
-import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static org.hswebframework.ezorm.rdb.executor.wrapper.ResultWrappers.map;
@@ -41,6 +47,7 @@ import static org.hswebframework.ezorm.rdb.operator.dml.query.SortOrder.*;
 public abstract class BasicReactiveTests {
 
     protected ReactiveRepository<BasicTestEntity, String> repository;
+    protected ReactiveRepository<Record, String> addressRepository;
 
     protected abstract RDBSchemaMetadata getSchema();
 
@@ -52,6 +59,29 @@ public abstract class BasicReactiveTests {
         RDBDatabaseMetadata metadata = new RDBDatabaseMetadata(getDialect());
 
         RDBSchemaMetadata schema = getSchema();
+        schema.addFeature(new DefaultValueGenerator() {
+            @Override
+            public String getSortId() {
+                return "uuid";
+            }
+
+            @Override
+            public DefaultValue generate(ObjectMetadata meta) {
+                return (RuntimeDefaultValue) () -> UUID.randomUUID().toString().replace("-", "");
+            }
+
+            @Override
+            public String getName() {
+                return "UUID";
+            }
+        });
+
+        schema.addFeature(new EventListener() {
+            @Override
+            public void onEvent(EventType type, EventContext context) {
+                System.out.println(type);
+            }
+        });
         log.debug(schema.toString());
 
         metadata.setCurrentSchema(schema);
@@ -71,6 +101,11 @@ public abstract class BasicReactiveTests {
         } catch (Exception e) {
 
         }
+        try {
+            getSqlExecutor().execute(Mono.just(SqlRequests.of("drop table test_address"))).block();
+        } catch (Exception e) {
+
+        }
     }
 
     @Before
@@ -80,8 +115,16 @@ public abstract class BasicReactiveTests {
 
         JpaEntityTableMetadataParser parser = new JpaEntityTableMetadataParser();
         parser.setDatabaseMetadata(metadata);
+        parser.parseTableMetadata(Address.class)
+                .ifPresent(address -> {
+                    operator.ddl()
+                            .createOrAlter(address)
+                            .commit()
+                            .reactive()
+                            .block();
+                });
 
-        RDBTableMetadata table = parser.parseTable(BasicTestEntity.class).orElseThrow(NullPointerException::new);
+        RDBTableMetadata table = parser.parseTableMetadata(BasicTestEntity.class).orElseThrow(NullPointerException::new);
 
         operator.ddl()
                 .createOrAlter(table)
@@ -93,6 +136,8 @@ public abstract class BasicReactiveTests {
 
 
         repository = new DefaultReactiveRepository<>(operator, table, BasicTestEntity.class, wrapper);
+        addressRepository = operator.dml().createReactiveRepository("test_address");
+
     }
 
     @Test
@@ -103,16 +148,17 @@ public abstract class BasicReactiveTests {
             operator.ddl()
                     .createOrAlter("test_reactive_pager")
                     .addColumn().name("id").number(32).primaryKey().comment("ID").commit()
+                    .addColumn().name("id2").number(32).comment("ID2").commit()
                     .commit()
                     .reactive()
                     .block();
 
             InsertOperator insert = operator.dml()
                     .insert("test_reactive_pager")
-                    .columns("id");
+                    .columns("id", "id2");
 
             for (int i = 0; i < 100; i++) {
-                insert.values(i + 1);
+                insert.values(String.valueOf(i + 1), null);
             }
 
             StepVerifier.create(insert.execute().reactive())
@@ -156,6 +202,7 @@ public abstract class BasicReactiveTests {
                         .createTime(new Date())
                         .tags(Arrays.asList("a", "b", "c", "d"))
                         .state((byte) 1)
+                        .stateEnum(StateEnum.enabled)
                         .build())))
                 .expectNext(10)
                 .verifyComplete();
@@ -170,8 +217,36 @@ public abstract class BasicReactiveTests {
                                 .createTime(new Date())
                                 .state((byte) 1)
                                 .build())
-                        .buffer(30)))
+                        .buffer(10).delayElements(Duration.ofMillis(100))))
                 .expectNext(100)
+                .verifyComplete();
+
+    }
+
+
+    @Test
+    public void testReactiveRepositorySave() {
+        BasicTestEntity entity = BasicTestEntity.builder()
+                .id("test_id_save")
+                .balance(1000L)
+                .name("test")
+                .createTime(new Date())
+                .tags(Arrays.asList("a", "b", "c", "d"))
+                .state((byte) 1)
+                .addressId("test")
+                .stateEnum(StateEnum.enabled)
+                .build();
+
+        repository.save(Mono.just(entity))
+                .map(SaveResult::getTotal)
+                .as(StepVerifier::create)
+                .expectNext(1)
+                .verifyComplete();
+
+        repository.save(Mono.just(entity))
+                .map(SaveResult::getTotal)
+                .as(StepVerifier::create)
+                .expectNext(1)
                 .verifyComplete();
 
     }
@@ -186,7 +261,13 @@ public abstract class BasicReactiveTests {
                 .tags(Arrays.asList("a", "b", "c", "d"))
                 .createTime(new Date())
                 .state((byte) 1)
+                .addressId("test")
                 .build();
+
+        addressRepository.insert(Mono.just(Record.newRecord().putValue("id", "test").putValue("name", "test_address")))
+                .as(StepVerifier::create)
+                .expectNext(1)
+                .verifyComplete();
 
         Mono.just(entity)
                 .as(repository::insert)

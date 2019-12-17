@@ -40,13 +40,13 @@ public abstract class DefaultDialect implements Dialect {
                 column -> "nvarchar(" + column.getLength() + ")"));
 
         registerDataType("decimal", DataType.builder(DataType.jdbc(JDBCType.DECIMAL, BigDecimal.class),
-                column -> "decimal(" + column.getPrecision() + "," + column.getScale() + ")"));
+                column -> "decimal(" + column.getPrecision(32) + "," + column.getScale() + ")"));
 
         registerDataType("numeric", DataType.builder(DataType.jdbc(JDBCType.NUMERIC, BigDecimal.class),
-                column -> "numeric(" + column.getPrecision() + "," + column.getScale() + ")"));
+                column -> "numeric(" + column.getPrecision(32) + "," + column.getScale() + ")"));
 
         registerDataType("number", DataType.builder(DataType.jdbc(JDBCType.NUMERIC, BigDecimal.class),
-                column -> "number(" + column.getPrecision() + "," + column.getScale() + ")"));
+                column -> "number(" + column.getPrecision(32) + "," + column.getScale() + ")"));
 
 
         registerDataType("bigint", JdbcDataType.of(JDBCType.BIGINT, Long.class));
@@ -54,12 +54,9 @@ public abstract class DefaultDialect implements Dialect {
         registerDataType("timestamp", JdbcDataType.of(JDBCType.TIMESTAMP, Timestamp.class));
         registerDataType("date", JdbcDataType.of(JDBCType.DATE, LocalDate.class));
         registerDataType("time", JdbcDataType.of(JDBCType.TIME, LocalTime.class));
-        registerDataType("clob", JdbcDataType.of(JDBCType.CLOB, String.class));
-        registerDataType("blob", JdbcDataType.of(JDBCType.BLOB, byte[].class));
         registerDataType("long", JdbcDataType.of(JDBCType.BIGINT, Long.class));
         registerDataType("double", JdbcDataType.of(JDBCType.DOUBLE, Double.class));
         registerDataType("binary", JdbcDataType.of(JDBCType.BINARY, byte[].class));
-
 
         classJDBCTypeMapping.put(String.class, JDBCType.VARCHAR);
 
@@ -109,7 +106,7 @@ public abstract class DefaultDialect implements Dialect {
 
     @Override
     public void addDataTypeBuilder(String typeId, DataTypeBuilder mapper) {
-        dataTypeMappers.put(typeId, mapper);
+        dataTypeMappers.put(typeId.toLowerCase(), mapper);
     }
 
     @Override
@@ -122,13 +119,14 @@ public abstract class DefaultDialect implements Dialect {
     @Override
     public String buildColumnDataType(RDBColumnMetadata columnMetaData) {
         if (columnMetaData.getType() == null) {
-            return columnMetaData.getDataType();
+
+            throw new UnsupportedOperationException("unknown column type : " + columnMetaData);
         }
         DataType dataType = columnMetaData.getType();
         if (dataType instanceof DataTypeBuilder) {
             return ((DataTypeBuilder) dataType).createColumnDataType(columnMetaData);
         }
-        DataTypeBuilder mapper = dataTypeMappers.get(columnMetaData.getType().getId());
+        DataTypeBuilder mapper = dataTypeMappers.get(dataType.getId().toLowerCase());
         if (null == mapper) {
             mapper = defaultDataTypeBuilder;
         }
@@ -140,12 +138,17 @@ public abstract class DefaultDialect implements Dialect {
         if (dataType.contains("(")) {
             dataType = dataType.substring(0, dataType.indexOf("("));
         }
-        return dataTypeMapping.getOrDefault(dataType, convertUnknownDataType(dataType));
+        return dataTypeMapping.getOrDefault(dataType.toLowerCase(), convertUnknownDataType(dataType));
     }
 
     protected DataType convertUnknownDataType(String dataType) {
-
-        return CustomDataType.of(dataType, dataType, JDBCType.OTHER, String.class);
+        JDBCType type;
+        try {
+            type = JDBCType.valueOf(dataType.toUpperCase());
+        } catch (Exception e) {
+            type = JDBCType.OTHER;
+        }
+        return CustomDataType.of(dataType, dataType, type, String.class);
     }
 
     protected String doClearQuote(String string) {

@@ -3,6 +3,7 @@ package org.hswebframework.ezorm.rdb.operator.builder.fragments.insert;
 import lombok.AllArgsConstructor;
 import org.hswebframework.ezorm.core.RuntimeDefaultValue;
 import org.hswebframework.ezorm.rdb.executor.DefaultBatchSqlRequest;
+import org.hswebframework.ezorm.rdb.executor.NullValue;
 import org.hswebframework.ezorm.rdb.executor.SqlRequest;
 import org.hswebframework.ezorm.rdb.metadata.RDBColumnMetadata;
 import org.hswebframework.ezorm.rdb.metadata.RDBTableMetadata;
@@ -70,28 +71,35 @@ public class MultiInsertSqlBuilder implements InsertSqlBuilder {
             int vIndex = 0;
             for (Map.Entry<Integer, RDBColumnMetadata> entry : indexMapping.entrySet()) {
                 RDBColumnMetadata column = entry.getValue();
-
-                Object value = column.encode(valueLen < vIndex ? null : values.get(vIndex));
-                if (vIndex++ != 0) {
-                    intoSql.addSql(",");
-                    valuesSql.addSql(",");
-                }
-                if (value == null && column.getDefaultValue() instanceof RuntimeDefaultValue) {
-                    value = ((RuntimeDefaultValue) column.getDefaultValue()).getValue();
-                }
-                intoSql.addSql(column.getQuoteName());
-                if (value instanceof NativeSql) {
-                    valuesSql.addSql(((NativeSql) value).getSql())
-                            .addParameter(((NativeSql) value).getParameters());
-                    continue;
-                }
                 SqlFragments function = functionValues.get(vIndex);
 
                 if (null != function) {
                     valuesSql.addFragments(function);
-                } else {
-                    valuesSql.addSql("?").addParameter(value);
                 }
+
+                Object value = valueLen <= vIndex ? null : values.get(vIndex);
+
+                if (vIndex++ != 0) {
+                    intoSql.addSql(",");
+                    valuesSql.addSql(",");
+                }
+
+                intoSql.addSql(column.getQuoteName());
+
+                if ((value == null || value instanceof NullValue)
+                        && column.getDefaultValue() instanceof RuntimeDefaultValue) {
+                    value = ((RuntimeDefaultValue) column.getDefaultValue()).get();
+                }
+                if (value instanceof NativeSql) {
+                    valuesSql
+                            .addSql(((NativeSql) value).getSql())
+                            .addParameter(((NativeSql) value).getParameters());
+                    continue;
+                }
+                if (value == null) {
+                    value = NullValue.of( column.getType());
+                }
+                valuesSql.addSql("?").addParameter(column.encode(value));
             }
             intoSql.addSql(")");
             valuesSql.addSql(")");

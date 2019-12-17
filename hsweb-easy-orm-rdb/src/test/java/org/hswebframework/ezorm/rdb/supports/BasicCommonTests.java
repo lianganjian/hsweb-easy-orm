@@ -1,13 +1,21 @@
 package org.hswebframework.ezorm.rdb.supports;
 
 import lombok.extern.slf4j.Slf4j;
+import org.hswebframework.ezorm.core.DefaultValue;
+import org.hswebframework.ezorm.core.DefaultValueGenerator;
+import org.hswebframework.ezorm.core.GlobalConfig;
+import org.hswebframework.ezorm.core.RuntimeDefaultValue;
+import org.hswebframework.ezorm.core.meta.ObjectMetadata;
 import org.hswebframework.ezorm.rdb.events.EventListener;
 import org.hswebframework.ezorm.rdb.executor.SqlRequests;
 import org.hswebframework.ezorm.rdb.executor.SyncSqlExecutor;
+import org.hswebframework.ezorm.rdb.executor.wrapper.ResultWrapper;
 import org.hswebframework.ezorm.rdb.mapping.EntityColumnMapping;
 import org.hswebframework.ezorm.rdb.mapping.MappingFeatureType;
 import org.hswebframework.ezorm.rdb.mapping.SyncRepository;
 import org.hswebframework.ezorm.rdb.mapping.defaults.DefaultSyncRepository;
+import org.hswebframework.ezorm.rdb.mapping.defaults.record.Record;
+import org.hswebframework.ezorm.rdb.mapping.defaults.record.RecordResultWrapper;
 import org.hswebframework.ezorm.rdb.mapping.jpa.JpaEntityTableMetadataParser;
 import org.hswebframework.ezorm.rdb.mapping.wrapper.EntityResultWrapper;
 import org.hswebframework.ezorm.rdb.metadata.RDBDatabaseMetadata;
@@ -30,14 +38,15 @@ import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.UUID;
 
-import static org.hswebframework.ezorm.rdb.executor.wrapper.ResultWrappers.lowerCase;
-import static org.hswebframework.ezorm.rdb.executor.wrapper.ResultWrappers.mapStream;
+import static org.hswebframework.ezorm.rdb.executor.wrapper.ResultWrappers.*;
 
 @Slf4j
 public abstract class BasicCommonTests {
 
     protected SyncRepository<BasicTestEntity, String> repository;
+    protected SyncRepository<Record, String> addressRepository;
 
     protected abstract RDBSchemaMetadata getSchema();
 
@@ -49,6 +58,22 @@ public abstract class BasicCommonTests {
         RDBDatabaseMetadata metadata = new RDBDatabaseMetadata(getDialect());
 
         RDBSchemaMetadata schema = getSchema();
+        schema.addFeature(new DefaultValueGenerator() {
+            @Override
+            public String getSortId() {
+                return "uuid";
+            }
+
+            @Override
+            public RuntimeDefaultValue generate(ObjectMetadata meta) {
+                return () -> UUID.randomUUID().toString().replace("-", "");
+            }
+
+            @Override
+            public String getName() {
+                return "UUID";
+            }
+        });
         log.debug(schema.toString());
 
         metadata.setCurrentSchema(schema);
@@ -67,9 +92,17 @@ public abstract class BasicCommonTests {
         JpaEntityTableMetadataParser parser = new JpaEntityTableMetadataParser();
         parser.setDatabaseMetadata(metadata);
 
-        RDBTableMetadata table = parser.parseTable(BasicTestEntity.class).orElseThrow(NullPointerException::new);
+        parser.parseTableMetadata(Address.class)
+                .ifPresent(address -> {
+                    operator.ddl()
+                            .createOrAlter(address)
+                            .commit()
+                            .sync();
+                });
 
-        table.addFeature((EventListener) (type, context) -> log.debug("event:{},context:{}", type, context));
+        RDBTableMetadata table = parser.parseTableMetadata(BasicTestEntity.class).orElseThrow(NullPointerException::new);
+
+        //  table.addFeature((EventListener) (type, context) -> log.debug("event:{},context:{}", type, context));
 
         operator.ddl()
                 .createOrAlter(table)
@@ -78,14 +111,21 @@ public abstract class BasicCommonTests {
         EntityResultWrapper<BasicTestEntity> wrapper = new EntityResultWrapper<>(BasicTestEntity::new);
         wrapper.setMapping(table.<EntityColumnMapping>getFeature(MappingFeatureType.columnPropertyMapping.createFeatureId(BasicTestEntity.class)).orElseThrow(NullPointerException::new));
 
-
         repository = new DefaultSyncRepository<>(operator, table, BasicTestEntity.class, wrapper);
+        addressRepository = operator.dml().createRepository("test_address");
     }
 
     @After
     public void after() {
         try {
             getSqlExecutor().execute(SqlRequests.of("drop table entity_test_table"));
+
+        } catch (Exception e) {
+
+        }
+        try {
+            getSqlExecutor().execute(SqlRequests.of("drop table test_address"));
+
         } catch (Exception e) {
 
         }
@@ -95,19 +135,40 @@ public abstract class BasicCommonTests {
     public void testRepositoryInsertBach() {
         List<BasicTestEntity> entities = Flux.range(0, 100)
                 .map(integer -> BasicTestEntity.builder()
-                        .id("test_id_" + integer)
+                        // .id("test_id_" + integer)
                         .balance(1000L)
                         .name("test:" + integer)
                         .createTime(new Date())
                         .tags(Arrays.asList("a", "b", "c", "d"))
                         .state((byte) 1)
+                        .stateEnum(StateEnum.enabled)
                         .build())
                 .collectList().block();
         Assert.assertEquals(100, repository.insertBatch(entities));
     }
 
     @Test
+    public void testRepositorySave() {
+        BasicTestEntity entity = BasicTestEntity.builder()
+                .id("test_id_save")
+                .balance(1000L)
+                .name("test")
+                .createTime(new Date())
+                .tags(Arrays.asList("a", "b", "c", "d"))
+                .state((byte) 1)
+                .addressId("test")
+                .stateEnum(StateEnum.enabled)
+                .build();
+
+        Assert.assertEquals(repository.save(entity).getTotal(), 1);
+        Assert.assertEquals(repository.save(entity).getTotal(), 1);
+
+    }
+
+    @Test
     public void testRepositoryCurd() {
+
+
         BasicTestEntity entity = BasicTestEntity.builder()
                 .id("test_id")
                 .balance(1000L)
@@ -115,16 +176,19 @@ public abstract class BasicCommonTests {
                 .createTime(new Date())
                 .tags(Arrays.asList("a", "b", "c", "d"))
                 .state((byte) 1)
+                .addressId("test")
+                .stateEnum(StateEnum.enabled)
                 .build();
-
+        addressRepository.insert(Record.newRecord().putValue("id", "test").putValue("name", "test_address"));
         repository.insert(entity);
 
         Assert.assertEquals(repository.findById("test_id").orElseThrow(NullPointerException::new), entity);
 
         List<BasicTestEntity> list = repository.createQuery()
+                .selectExcludes("address.*")
                 .where(entity::getId)
                 .nest()
-                .is(entity::getId).or().is(entity::getId)
+                .is(entity::getId).or().is("address.name", "test")
                 .end()
                 .orderBy(SortOrder.desc("id"))
                 .paging(0, 10)
@@ -137,14 +201,14 @@ public abstract class BasicCommonTests {
                 .nest()
                 .is(entity::getId).or().is(entity::getId)
                 .end()
-                .where(entity::getId)
+                .where(entity::getId).and().is("address.name", "test_address")
                 .execute());
 
         Assert.assertEquals(1, repository.createDelete()
                 .where(entity::getId)
                 .nest()
                 .is(entity::getId).or().is(entity::getId)
-                .end()
+                .end().is("address.name", "test_address")
                 .execute());
 
     }

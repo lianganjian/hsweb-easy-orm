@@ -23,6 +23,8 @@ import org.hswebframework.ezorm.rdb.operator.dml.query.ExecutableQueryOperator;
 import org.hswebframework.ezorm.rdb.operator.dml.QueryOperator;
 import org.hswebframework.ezorm.rdb.operator.dml.update.ExecutableUpdateOperator;
 import org.hswebframework.ezorm.rdb.operator.dml.update.UpdateOperator;
+import org.hswebframework.ezorm.rdb.operator.dml.upsert.DefaultUpsertOperator;
+import org.hswebframework.ezorm.rdb.operator.dml.upsert.UpsertOperator;
 
 @AllArgsConstructor(staticName = "of")
 public class DefaultDatabaseOperator
@@ -53,6 +55,13 @@ public class DefaultDatabaseOperator
     @Override
     public DeleteOperator delete(String table) {
         return ExecutableDeleteOperator.of(metadata
+                .getTable(table)
+                .orElseThrow(() -> new UnsupportedOperationException("table [" + table + "] doesn't exist ")));
+    }
+
+    @Override
+    public UpsertOperator upsert(String table) {
+        return DefaultUpsertOperator.of(metadata
                 .getTable(table)
                 .orElseThrow(() -> new UnsupportedOperationException("table [" + table + "] doesn't exist ")));
     }
@@ -111,9 +120,8 @@ public class DefaultDatabaseOperator
                     } else {
                         schema = metadata.getCurrentSchema();
                     }
-                    RDBTableMetadata newTable = schema.newTable(tableName);
-                    newTable.setSchema(schema);
-                    return newTable;
+
+                    return schema.newTable(tableName);
                 });
 
         return new DefaultTableBuilder(table);
@@ -127,17 +135,11 @@ public class DefaultDatabaseOperator
 
     @Override
     public <K> ReactiveRepository<Record, K> createReactiveRepository(String tableName) {
-        return getMetadata()
-                .getTable(tableName)
-                .<ReactiveRepository<Record, K>>map(table -> new RecordReactiveRepository<>(this, table))
-                .orElseThrow(() -> new UnsupportedOperationException("table [" + tableName + "] doesn't exist "));
+        return  new RecordReactiveRepository<>(this, tableName);
     }
 
     @Override
     public <K> SyncRepository<Record, K> createRepository(String tableName) {
-        return getMetadata()
-                .getTable(tableName)
-                .<SyncRepository<Record, K>>map(table -> new RecordSyncRepository<>(this, table))
-                .orElseThrow(() -> new UnsupportedOperationException("table [" + tableName + "] doesn't exist "));
+        return new RecordSyncRepository<>(this,tableName);
     }
 }

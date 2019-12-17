@@ -66,41 +66,32 @@
         <dependency>
             <groupId>io.r2dbc</groupId>
             <artifactId>r2dbc-h2</artifactId>
-            <scope>test</scope>
+            <optional>true</optional>
         </dependency>
-
-        <!-- https://mvnrepository.com/artifact/com.github.jasync-sql/jasync-r2dbc-mysql -->
-        <!--<dependency>-->
-            <!--<groupId>com.github.jasync-sql</groupId>-->
-            <!--<artifactId>jasync-r2dbc-mysql</artifactId>-->
-            <!--<version>1.0.7</version>-->
-            <!--<scope>test</scope>-->
-        <!--</dependency>-->
 
         <dependency>
             <groupId>dev.miku</groupId>
             <artifactId>r2dbc-mysql</artifactId>
-            <version>0.3.0.BUILD-SNAPSHOT</version>
             <optional>true</optional>
         </dependency>
 
         <dependency>
             <groupId>io.r2dbc</groupId>
             <artifactId>r2dbc-postgresql</artifactId>
-            <scope>test</scope>
+            <optional>true</optional>
         </dependency>
 
         <dependency>
             <groupId>io.r2dbc</groupId>
             <artifactId>r2dbc-mssql</artifactId>
-            <scope>test</scope>
+            <optional>true</optional>
         </dependency>
 
         <dependency>
             <groupId>mysql</groupId>
             <artifactId>mysql-connector-java</artifactId>
             <version>8.0.17</version>
-            <scope>test</scope>
+            <optional>true</optional>
         </dependency>
 
         <dependency>

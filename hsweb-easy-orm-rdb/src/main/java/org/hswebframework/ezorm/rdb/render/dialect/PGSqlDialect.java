@@ -22,6 +22,7 @@ public class PGSqlDialect extends DefaultDialect {
         defaultDataTypeMapper = (meta) -> meta.getJdbcType().getName().toLowerCase();
         setDataTypeMapper(JDBCType.CHAR, (meta) -> StringUtils.concat("char(", meta.getLength(), ")"));
         setDataTypeMapper(JDBCType.VARCHAR, (meta) -> StringUtils.concat("varchar(", meta.getLength(), ")"));
+        setDataTypeMapper(JDBCType.NVARCHAR, (meta) -> StringUtils.concat("varchar(", meta.getLength(), ")"));
         setDataTypeMapper(JDBCType.TIMESTAMP, (meta) -> "timestamp");
         setDataTypeMapper(JDBCType.TIME, (meta) -> "time");
         setDataTypeMapper(JDBCType.DATE, (meta) -> "date");

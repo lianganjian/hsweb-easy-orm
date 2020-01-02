@@ -16,6 +16,7 @@ public class H2Dialect extends DefaultDialect {
     protected H2Dialect() {
         defaultDataTypeMapper = (meta) -> meta.getJdbcType().getName().toLowerCase();
         setDataTypeMapper(JDBCType.VARCHAR, (meta) -> StringUtils.concat("varchar(", meta.getLength(), ")"));
+        setDataTypeMapper(JDBCType.NVARCHAR, (meta) -> StringUtils.concat("varchar(", meta.getLength(), ")"));
         setDataTypeMapper(JDBCType.TIMESTAMP, (meta) -> "timestamp");
         setDataTypeMapper(JDBCType.SMALLINT, (meta) -> "smallint");
         setDataTypeMapper(JDBCType.BIGINT, (meta) -> "bigint");

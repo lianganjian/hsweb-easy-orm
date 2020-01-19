@@ -47,6 +47,10 @@ public interface ColumnBuilder {
         return jdbcType(JDBCType.CLOB);
     }
 
+    default ColumnBuilder blob() {
+        return jdbcType(JDBCType.BLOB);
+    }
+
     default ColumnBuilder integer() {
         return jdbcType(JDBCType.INTEGER);
     }

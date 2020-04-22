@@ -23,16 +23,14 @@ public class BatchInsertSqlBuilder implements InsertSqlBuilder {
 
     private RDBTableMetadata table;
 
-    public static BatchInsertSqlBuilder of(RDBTableMetadata table){
+    public static BatchInsertSqlBuilder of(RDBTableMetadata table) {
         return new BatchInsertSqlBuilder(table);
     }
+
     @Override
     public SqlRequest build(InsertOperatorParameter parameter) {
-        PrepareSqlFragments fragments = PrepareSqlFragments.of();
+        PrepareSqlFragments fragments = beforeBuild(parameter, PrepareSqlFragments.of()).addSql("(");
 
-        fragments.addSql("insert into")
-                .addSql(table.getFullName())
-                .addSql("(");
         Map<Integer, RDBColumnMetadata> indexMapping = new HashMap<>();
         Map<Integer, SqlFragments> functionValues = new HashMap<>();
 
@@ -44,7 +42,7 @@ public class BatchInsertSqlBuilder implements InsertSqlBuilder {
                     .flatMap(table::getColumn)
                     .orElse(null);
 
-            if (columnMetadata != null) {
+            if (columnMetadata != null && columnMetadata.isInsertable()) {
                 if (indexMapping.size() != 0) {
                     fragments.addSql(",");
                 }
@@ -106,10 +104,20 @@ public class BatchInsertSqlBuilder implements InsertSqlBuilder {
             }
 
             fragments.addSql(")");
-            afterValues(parameter.getColumns(),values,fragments);
+            afterValues(columns, values, fragments);
         }
 
-        return fragments.toRequest();
+        return afterBuild(columns, parameter, fragments).toRequest();
+    }
+
+    protected PrepareSqlFragments beforeBuild(InsertOperatorParameter parameter, PrepareSqlFragments fragments) {
+        return fragments.addSql("insert into")
+                .addSql(table.getFullName());
+    }
+
+    protected PrepareSqlFragments afterBuild(Set<InsertColumn> columns, InsertOperatorParameter parameter, PrepareSqlFragments fragments) {
+
+        return fragments;
     }
 
     protected void afterValues(Set<InsertColumn> columns, List<Object> values, PrepareSqlFragments sql) {

@@ -1,11 +1,8 @@
 package org.hswebframework.ezorm.rdb.supports.postgres;
 
-import io.r2dbc.spi.Result;
 import org.hswebframework.ezorm.rdb.TestReactiveSqlExecutor;
 import org.hswebframework.ezorm.rdb.exception.DuplicateKeyException;
-import org.hswebframework.ezorm.rdb.executor.SqlRequests;
 import org.hswebframework.ezorm.rdb.executor.reactive.ReactiveSqlExecutor;
-import org.hswebframework.ezorm.rdb.executor.wrapper.ResultWrappers;
 import org.hswebframework.ezorm.rdb.metadata.RDBSchemaMetadata;
 import org.hswebframework.ezorm.rdb.metadata.dialect.Dialect;
 import org.hswebframework.ezorm.rdb.supports.BasicReactiveTests;
@@ -17,10 +14,8 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.util.Date;
-import java.util.List;
-import java.util.Map;
 
-public class PostgresqlReactiveTests extends BasicReactiveTests {
+public class Postgresql12ReactiveTests extends BasicReactiveTests {
     @Override
     protected RDBSchemaMetadata getSchema() {
         return new PostgresqlSchemaMetadata("public");
@@ -34,7 +29,7 @@ public class PostgresqlReactiveTests extends BasicReactiveTests {
     @Override
     protected ReactiveSqlExecutor getSqlExecutor() {
 
-        return new TestReactiveSqlExecutor(new PostgresqlR2dbcConnectionProvider());
+        return new TestReactiveSqlExecutor(new Postgresql12R2dbcConnectionProvider());
     }
 
     @Test
@@ -58,23 +53,4 @@ public class PostgresqlReactiveTests extends BasicReactiveTests {
                 .verify();
     }
 
-    @Test
-    @Ignore
-    public void benchmark() {
-        long time = System.currentTimeMillis();
-
-        StepVerifier
-                .create(repository.insertBatch(Flux.range(0, 100000)
-                        .map(integer -> BasicTestEntity.builder()
-                                .id("id:" + integer)
-                                .balance(1000L)
-                                .name("test:" + integer)
-                                .createTime(new Date())
-                                .state((byte) 1)
-                                .build())
-                        .buffer(1000)))
-                .expectNext(100000)
-                .verifyComplete();
-        System.out.println(System.currentTimeMillis() - time);
-    }
 }

@@ -6,6 +6,7 @@ import org.hswebframework.ezorm.core.StaticMethodReferenceColumn;
 import org.hswebframework.ezorm.core.param.QueryParam;
 
 import java.util.Arrays;
+import java.util.function.BiFunction;
 
 @SuppressWarnings("all")
 public interface DSLUpdate<E, ME extends DSLUpdate> extends Conditional<ME> {
@@ -20,7 +21,21 @@ public interface DSLUpdate<E, ME extends DSLUpdate> extends Conditional<ME> {
 
     ME setNull(String column);
 
-    public QueryParam toQueryParam();
+    default <R> ME set(MethodReferenceColumn<R> columnAndValue) {
+        return set(columnAndValue.getColumn(), columnAndValue.get());
+    }
+
+    default ME set(StaticMethodReferenceColumn<E> column, Object value) {
+        return set(column.getColumn(), value);
+    }
+
+    default ME setNull(StaticMethodReferenceColumn<E> column) {
+        return setNull(column.getColumn());
+    }
+
+    default ME setNull(MethodReferenceColumn<E> column) {
+        return setNull(column.getColumn());
+    }
 
     default ME includes(StaticMethodReferenceColumn<E>... columns) {
         return includes(Arrays
@@ -50,12 +65,6 @@ public interface DSLUpdate<E, ME extends DSLUpdate> extends Conditional<ME> {
                 .toArray(String[]::new));
     }
 
-    default <R> ME set(MethodReferenceColumn<R> columnAndValue) {
-        return set(columnAndValue.getColumn(), columnAndValue.get());
-    }
-
-    default ME set(StaticMethodReferenceColumn<E> column, Object value) {
-        return set(column.getColumn(), value);
-    }
+    public QueryParam toQueryParam();
 
 }

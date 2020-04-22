@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
  * database
  * .dml()
  * .query()
- * .column(count("id","total"))
+ * .select(count("id","total"))
  * .from("user")
  * .where(dsl->dsl.is("name","1"))
  * .execute()
@@ -129,9 +129,9 @@ public abstract class QueryOperator implements LogicalOperation<QueryOperator> {
 
     public abstract QueryOperator orderBy(SortOrder... operators);
 
-    public abstract QueryOperator groupBy(Operator... operators);
+    public abstract QueryOperator groupBy(Operator<?>... operators);
 
-    public abstract QueryOperator having(Operator... operators);
+    public abstract QueryOperator having(Operator<?>... operators);
 
     public abstract QueryOperator paging(int pageIndex, int pageSize);
 

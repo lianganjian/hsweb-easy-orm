@@ -1,7 +1,6 @@
-package org.hswebframework.ezorm.rdb.supports.mysql;
+package org.hswebframework.ezorm.rdb.supports.postgres;
 
 import lombok.AllArgsConstructor;
-import org.hswebframework.ezorm.rdb.executor.NullValue;
 import org.hswebframework.ezorm.rdb.executor.SqlRequest;
 import org.hswebframework.ezorm.rdb.executor.SyncSqlExecutor;
 import org.hswebframework.ezorm.rdb.executor.reactive.ReactiveSqlExecutor;
@@ -15,85 +14,103 @@ import org.hswebframework.ezorm.rdb.operator.dml.insert.InsertColumn;
 import org.hswebframework.ezorm.rdb.operator.dml.insert.InsertOperatorParameter;
 import org.hswebframework.ezorm.rdb.operator.dml.upsert.*;
 import org.hswebframework.ezorm.rdb.utils.ExceptionUtils;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 @SuppressWarnings("all")
-public class MysqlSaveOrUpdateOperator implements SaveOrUpdateOperator {
+public class PostgresqlBatchUpsertOperator implements SaveOrUpdateOperator {
 
     private RDBTableMetadata table;
 
-    public MysqlUpsertBatchInsertSqlBuilder builder;
+    private PostgresqlUpsertBatchInsertSqlBuilder builder;
 
-    public MysqlSaveOrUpdateOperator(RDBTableMetadata table) {
+    private RDBColumnMetadata idColumn;
+
+    private SaveOrUpdateOperator fallback;
+
+    public PostgresqlBatchUpsertOperator(RDBTableMetadata table) {
         this.table = table;
-        this.builder = new MysqlUpsertBatchInsertSqlBuilder(table);
+        this.builder = new PostgresqlUpsertBatchInsertSqlBuilder(table);
+        this.idColumn = table.getColumns()
+                .stream().filter(RDBColumnMetadata::isPrimaryKey)
+                .findFirst().orElse(null);
+        this.fallback = new DefaultSaveOrUpdateOperator(table);
     }
 
     @Override
     public SaveResultOperator execute(UpsertOperatorParameter parameter) {
+        if (idColumn == null) {
+            this.idColumn = table.getColumns()
+                    .stream()
+                    .filter(RDBColumnMetadata::isPrimaryKey)
+                    .findFirst()
+                    .orElse(null);
 
-        return new MysqlSaveResultOperator(() -> parameter.getValues()
-                .stream()
-                .map(value -> {
-                    InsertOperatorParameter newParam = new InsertOperatorParameter();
-                    newParam.setColumns(parameter.toInsertColumns());
-                    newParam.getValues().add(value);
-                    return newParam;
-                })
-                .map(builder::build)
-                .collect(Collectors.toList()));
+            if (this.idColumn == null) {
+                return fallback.execute(parameter);
+            }
+        }
+
+        return new PostgresqlSaveResultOperator(() -> builder.build(new PostgresqlUpsertOperatorParameter(parameter)));
+    }
+
+    class PostgresqlUpsertOperatorParameter extends InsertOperatorParameter {
+
+        private boolean doNoThingOnConflict;
+
+        public PostgresqlUpsertOperatorParameter(UpsertOperatorParameter parameter) {
+            doNoThingOnConflict = parameter.isDoNothingOnConflict();
+            setColumns(parameter.toInsertColumns());
+            setValues(parameter.getValues());
+        }
+
     }
 
     @AllArgsConstructor
-    private class MysqlSaveResultOperator implements SaveResultOperator {
+    private class PostgresqlSaveResultOperator implements SaveResultOperator {
 
-        Supplier<List<SqlRequest>> sqlRequest;
+        Supplier<SqlRequest> sqlRequest;
 
         @Override
         public SaveResult sync() {
             return ExceptionUtils.translation(() -> {
                 SyncSqlExecutor sqlExecutor = table.findFeatureNow(SyncSqlExecutor.ID);
-                int added = 0, updated = 0;
-                for (SqlRequest request : sqlRequest.get()) {
-                    int num = sqlExecutor.update(request);
-                    if (num == 0) {
-                        updated++;
-                    } else {
-                        added++;
-                    }
-                }
-                return SaveResult.of(added, updated);
+                int updated = sqlExecutor.update(sqlRequest.get());
+                return SaveResult.of(0, updated);
             }, table);
         }
 
         @Override
         public Mono<SaveResult> reactive() {
             return Mono.defer(() -> {
-                ReactiveSqlExecutor sqlExecutor = table.findFeatureNow(ReactiveSqlExecutor.ID);
-                return Flux.fromIterable(sqlRequest.get())
-                        .flatMap(sql -> sqlExecutor.update(Mono.just(sql)))
-                        .map(i -> SaveResult.of(i > 0 ? 1 : 0, i == 0 ? 1 : 0))
-                        .reduce(SaveResult::merge)
-                        .onErrorMap(err -> ExceptionUtils.translation(table, err));
+                return Mono.just(sqlRequest.get())
+                        .as(table.findFeatureNow(ReactiveSqlExecutor.ID)::update)
+                        .map(i -> SaveResult.of(0, i))
+                        .as(ExceptionUtils.translation(table));
             });
         }
     }
 
-    private class MysqlUpsertBatchInsertSqlBuilder extends BatchInsertSqlBuilder {
+    private class PostgresqlUpsertBatchInsertSqlBuilder extends BatchInsertSqlBuilder {
 
-        public MysqlUpsertBatchInsertSqlBuilder(RDBTableMetadata table) {
+        public PostgresqlUpsertBatchInsertSqlBuilder(RDBTableMetadata table) {
             super(table);
         }
 
         @Override
-        protected void afterValues(Set<InsertColumn> columns, List<Object> values, PrepareSqlFragments sql) {
-            sql.addSql("on duplicate key update");
+        protected PrepareSqlFragments afterBuild(Set<InsertColumn> columns, InsertOperatorParameter parameter, PrepareSqlFragments sql) {
+            sql.addSql("on conflict (", idColumn.getName(), ") do ");
+
+            if (((PostgresqlUpsertOperatorParameter) parameter).doNoThingOnConflict) {
+                sql.addSql("nothing");
+                return sql;
+            }
+            sql.addSql("update set");
+
+            List<Object> values = parameter.getValues().get(0);
 
             int index = 0;
             boolean more = false;
@@ -111,7 +128,6 @@ public class MysqlSaveOrUpdateOperator implements SaveOrUpdateOperator {
 
                     continue;
                 }
-
                 if (more) {
                     sql.addSql(",");
                 }
@@ -121,9 +137,11 @@ public class MysqlSaveOrUpdateOperator implements SaveOrUpdateOperator {
                     sql.addSql(((NativeSql) value).getSql()).addParameter(((NativeSql) value).getParameters());
                     continue;
                 }
-
-                sql.addSql("?").addParameter(columnMetadata.encode(value));
+                sql.addSql(columnMetadata.getFullName("excluded"));
             }
+
+            return sql;
         }
+
     }
 }

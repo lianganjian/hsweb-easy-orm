@@ -1,7 +1,6 @@
-package org.hswebframework.ezorm.rdb.supports.postgres;
+package org.hswebframework.ezorm.rdb.supports.mysql;
 
 import lombok.AllArgsConstructor;
-import org.hswebframework.ezorm.rdb.executor.NullValue;
 import org.hswebframework.ezorm.rdb.executor.SqlRequest;
 import org.hswebframework.ezorm.rdb.executor.SyncSqlExecutor;
 import org.hswebframework.ezorm.rdb.executor.reactive.ReactiveSqlExecutor;
@@ -15,16 +14,14 @@ import org.hswebframework.ezorm.rdb.operator.dml.insert.InsertColumn;
 import org.hswebframework.ezorm.rdb.operator.dml.insert.InsertOperatorParameter;
 import org.hswebframework.ezorm.rdb.operator.dml.upsert.*;
 import org.hswebframework.ezorm.rdb.utils.ExceptionUtils;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 @SuppressWarnings("all")
-public class PostgresqlSaveOrUpdateOperator implements SaveOrUpdateOperator {
+public class MysqlBatchUpsertOperator implements SaveOrUpdateOperator {
 
     private RDBTableMetadata table;
 
@@ -34,7 +31,7 @@ public class PostgresqlSaveOrUpdateOperator implements SaveOrUpdateOperator {
 
     private SaveOrUpdateOperator fallback;
 
-    public PostgresqlSaveOrUpdateOperator(RDBTableMetadata table) {
+    public MysqlBatchUpsertOperator(RDBTableMetadata table) {
         this.table = table;
         this.builder = new PostgresqlUpsertBatchInsertSqlBuilder(table);
         this.idColumn = table.getColumns()
@@ -56,47 +53,44 @@ public class PostgresqlSaveOrUpdateOperator implements SaveOrUpdateOperator {
                 return fallback.execute(parameter);
             }
         }
-        return new PostgresqlSaveResultOperator(() -> parameter.getValues()
-                .stream()
-                .map(value -> {
-                    InsertOperatorParameter newParam = new InsertOperatorParameter();
-                    newParam.setColumns(parameter.toInsertColumns());
-                    newParam.getValues().add(value);
-                    return newParam;
-                })
-                .map(builder::build)
-                .collect(Collectors.toList()));
+
+        return new PostgresqlSaveResultOperator(() -> builder.build(new MysqlUpsertOperatorParameter(parameter)), parameter.getValues().size());
+    }
+
+    class MysqlUpsertOperatorParameter extends InsertOperatorParameter {
+
+        private boolean doNoThingOnConflict;
+
+        public MysqlUpsertOperatorParameter(UpsertOperatorParameter parameter) {
+            doNoThingOnConflict = parameter.isDoNothingOnConflict();
+            setColumns(parameter.toInsertColumns());
+            setValues(parameter.getValues());
+        }
+
     }
 
     @AllArgsConstructor
     private class PostgresqlSaveResultOperator implements SaveResultOperator {
 
-        Supplier<List<SqlRequest>> sqlRequest;
+        Supplier<SqlRequest> sqlRequest;
+        int total;
 
         @Override
         public SaveResult sync() {
             return ExceptionUtils.translation(() -> {
                 SyncSqlExecutor sqlExecutor = table.findFeatureNow(SyncSqlExecutor.ID);
-                int added = 0, updated = 0;
-                for (SqlRequest request : sqlRequest.get()) {
-                    int num = sqlExecutor.update(request);
-                    added += num;
-                    if (num == 0) {
-                        updated++;
-                    }
-                }
-                return SaveResult.of(added, updated);
+                sqlExecutor.update(sqlRequest.get());
+                return SaveResult.of(0, total);
             }, table);
         }
 
         @Override
         public Mono<SaveResult> reactive() {
             return Mono.defer(() -> {
-                ReactiveSqlExecutor sqlExecutor = table.findFeatureNow(ReactiveSqlExecutor.ID);
-                return Flux.fromIterable(sqlRequest.get())
-                        .flatMap(sql -> sqlExecutor.update(Mono.just(sql)))
-                        .map(i -> SaveResult.of(i > 0 ? i : 0, i == 0 ? 1 : 0))
-                        .reduce(SaveResult::merge);
+                return Mono.just(sqlRequest.get())
+                        .as(table.findFeatureNow(ReactiveSqlExecutor.ID)::update)
+                        .map(i -> SaveResult.of(0, total))
+                        .as(ExceptionUtils.translation(table));
             });
         }
     }
@@ -108,8 +102,23 @@ public class PostgresqlSaveOrUpdateOperator implements SaveOrUpdateOperator {
         }
 
         @Override
-        protected void afterValues(Set<InsertColumn> columns, List<Object> values, PrepareSqlFragments sql) {
-            sql.addSql("on conflict (", idColumn.getName(), ") do update set");
+        protected PrepareSqlFragments beforeBuild(InsertOperatorParameter parameter, PrepareSqlFragments fragments) {
+            if (((MysqlUpsertOperatorParameter) parameter).doNoThingOnConflict) {
+                return fragments.addSql("insert ignore into")
+                        .addSql(table.getFullName());
+            }
+            return super.beforeBuild(parameter, fragments);
+        }
+
+        @Override
+        protected PrepareSqlFragments afterBuild(Set<InsertColumn> columns, InsertOperatorParameter parameter, PrepareSqlFragments sql) {
+
+            if (((MysqlUpsertOperatorParameter) parameter).doNoThingOnConflict) {
+                return sql;
+            }
+            sql.addSql("on duplicate key update");
+
+            List<Object> values = parameter.getValues().get(0);
 
             int index = 0;
             boolean more = false;
@@ -136,8 +145,11 @@ public class PostgresqlSaveOrUpdateOperator implements SaveOrUpdateOperator {
                     sql.addSql(((NativeSql) value).getSql()).addParameter(((NativeSql) value).getParameters());
                     continue;
                 }
-                sql.addSql("?").addParameter(columnMetadata.encode(value));
+                sql.addSql("VALUES(", columnMetadata.getQuoteName(), ")");
             }
+
+            return sql;
         }
+
     }
 }

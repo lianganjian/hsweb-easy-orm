@@ -6,6 +6,7 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.beanutils.BeanUtilsBean;
 import org.hswebframework.ezorm.core.DefaultValueGenerator;
+import org.hswebframework.ezorm.core.RuntimeDefaultValue;
 import org.hswebframework.ezorm.rdb.mapping.EntityPropertyDescriptor;
 import org.hswebframework.ezorm.rdb.mapping.annotation.Comment;
 import org.hswebframework.ezorm.rdb.mapping.annotation.DefaultValue;
@@ -239,6 +240,7 @@ public class JpaEntityTableMetadataParserProcessor {
         metadata.setScale(column.scale);
         metadata.setNotNull(!column.nullable);
         metadata.setUpdatable(column.updatable);
+        metadata.setInsertable(column.insertable);
         if (!column.columnDefinition.isEmpty()) {
             metadata.setColumnDefinition(column.columnDefinition);
         }
@@ -246,14 +248,18 @@ public class JpaEntityTableMetadataParserProcessor {
                 .map(GeneratedValue::generator)
                 .map(gen -> LazyDefaultValueGenerator.of(() ->
                         tableMetadata.findFeatureNow(DefaultValueGenerator.<RDBColumnMetadata>createId(gen))))
-                .map(gen->gen.generate(metadata))
+                .map(gen -> gen.generate(metadata))
                 .ifPresent(metadata::setDefaultValue);
 
         getAnnotation(annotations, DefaultValue.class)
-                .map(DefaultValue::generator)
-                .map(gen -> LazyDefaultValueGenerator.of(() ->
-                        tableMetadata.findFeatureNow(DefaultValueGenerator.createId(gen))))
-                .map(gen->gen.generate(metadata))
+                .map(gen -> {
+                    if (gen.value().isEmpty()) {
+                        return LazyDefaultValueGenerator.of(() ->
+                                tableMetadata.findFeatureNow(DefaultValueGenerator.createId(gen.generator())))
+                                .generate(metadata);
+                    }
+                    return (RuntimeDefaultValue) gen::value;
+                })
                 .ifPresent(metadata::setDefaultValue);
 
         getAnnotation(annotations, Comment.class)

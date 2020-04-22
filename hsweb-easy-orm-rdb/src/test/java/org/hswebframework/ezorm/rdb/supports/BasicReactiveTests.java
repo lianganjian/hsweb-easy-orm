@@ -76,12 +76,7 @@ public abstract class BasicReactiveTests {
             }
         });
 
-        schema.addFeature(new EventListener() {
-            @Override
-            public void onEvent(EventType type, EventContext context) {
-                System.out.println(type);
-            }
-        });
+        schema.addFeature((EventListener) (type, context) -> System.out.println(type));
         log.debug(schema.toString());
 
         metadata.setCurrentSchema(schema);
@@ -97,12 +92,12 @@ public abstract class BasicReactiveTests {
     @After
     public void after() {
         try {
-            getSqlExecutor().execute(Mono.just(SqlRequests.of("drop table entity_test_table"))).block();
+            getSqlExecutor().execute(Mono.just(SqlRequests.of("delete from entity_test_table"))).block();
         } catch (Exception e) {
 
         }
         try {
-            getSqlExecutor().execute(Mono.just(SqlRequests.of("drop table test_address"))).block();
+            getSqlExecutor().execute(Mono.just(SqlRequests.of("delete from test_address"))).block();
         } catch (Exception e) {
 
         }
@@ -243,10 +238,32 @@ public abstract class BasicReactiveTests {
                 .expectNext(1)
                 .verifyComplete();
 
-        repository.save(Mono.just(entity))
+        BasicTestEntity entity2 = BasicTestEntity.builder()
+                .id("test_id_save2")
+                .balance(1000L)
+                .name("test")
+                .createTime(new Date())
+                .tags(Arrays.asList("a", "b", "c", "d"))
+                .state((byte) 1)
+                .addressId("test")
+                .stateEnum(StateEnum.enabled)
+                .build();
+
+        entity.setName("test2");
+
+        repository.createQuery()
+                .select("*")
+                .where("id", "test_id_save")
+                .fetch()
+                .map(BasicTestEntity::getName)
+                .as(StepVerifier::create)
+                .expectNext("test")
+                .verifyComplete();
+
+        repository.save(Flux.just(entity2, entity))
                 .map(SaveResult::getTotal)
                 .as(StepVerifier::create)
-                .expectNext(1)
+                .expectNext(2)
                 .verifyComplete();
 
     }

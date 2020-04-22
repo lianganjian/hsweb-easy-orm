@@ -1,5 +1,6 @@
 package org.hswebframework.ezorm.rdb.metadata;
 
+import org.hswebframework.ezorm.rdb.utils.DataTypeUtils;
 
 import java.sql.JDBCType;
 import java.sql.SQLType;
@@ -17,13 +18,32 @@ public interface DataType {
 
     SQLType getSqlType();
 
-    Class getJavaType();
+    Class<?> getJavaType();
 
-    static DataType custom(String id,String name,SQLType sqlType,Class javaType){
-     return CustomDataType.of(id, name, sqlType, javaType) ;
+    default boolean isScaleSupport() {
+        return getSqlType() == JDBCType.DECIMAL ||
+                getSqlType() == JDBCType.DOUBLE ||
+                getSqlType() == JDBCType.NUMERIC ||
+                getSqlType() == JDBCType.FLOAT;
     }
 
-    static DataType jdbc(JDBCType jdbcType, Class javaType) {
+    default boolean isLengthSupport() {
+        return isScaleSupport() ||
+                getSqlType() == JDBCType.VARCHAR ||
+                getSqlType() == JDBCType.CHAR||
+                getSqlType() == JDBCType.NVARCHAR
+                ;
+    }
+
+    default boolean isNumber(){
+        return DataTypeUtils.typeIsNumber(this);
+    }
+
+    static DataType custom(String id, String name, SQLType sqlType, Class<?> javaType) {
+        return CustomDataType.of(id, name, sqlType, javaType);
+    }
+
+    static DataType jdbc(JDBCType jdbcType, Class<?> javaType) {
         return JdbcDataType.of(jdbcType, javaType);
     }
 

@@ -1,5 +1,6 @@
 package org.hswebframework.ezorm.rdb.mapping.defaults;
 
+import org.apache.commons.collections4.CollectionUtils;
 import org.hswebframework.ezorm.rdb.events.ContextKey;
 import org.hswebframework.ezorm.rdb.events.ContextKeys;
 import org.hswebframework.ezorm.rdb.executor.wrapper.ResultWrapper;
@@ -46,6 +47,7 @@ public class DefaultReactiveRepository<E, K> extends DefaultRepository<E> implem
     @Override
     public Flux<E> findById(Flux<K> key) {
         return key.collectList()
+                .filter(CollectionUtils::isNotEmpty)
                 .flatMapMany(idList -> createQuery().where().in(getIdColumn(), idList).fetch());
     }
 
@@ -53,7 +55,9 @@ public class DefaultReactiveRepository<E, K> extends DefaultRepository<E> implem
     public Mono<Integer> deleteById(Publisher<K> key) {
         return Flux.from(key)
                 .collectList()
-                .flatMap(list -> createDelete().where().in(getIdColumn(), list).execute());
+                .filter(CollectionUtils::isNotEmpty)
+                .flatMap(list -> createDelete().where().in(getIdColumn(), list).execute())
+                .defaultIfEmpty(0);
     }
 
     @Override
@@ -70,21 +74,26 @@ public class DefaultReactiveRepository<E, K> extends DefaultRepository<E> implem
         return Flux
                 .from(data)
                 .collectList()
-                .flatMap(list -> doSave(list).reactive());
+                .filter(CollectionUtils::isNotEmpty)
+                .flatMap(list -> doSave(list).reactive())
+                .defaultIfEmpty(SaveResult.of(0, 0));
     }
 
     @Override
     public Mono<Integer> insert(Publisher<E> data) {
         return Flux.from(data)
                 .flatMap(e -> doInsert(e).reactive().flux())
-                .reduce(Math::addExact);
+                .reduce(Math::addExact)
+                .defaultIfEmpty(0);
     }
 
     @Override
     public Mono<Integer> insertBatch(Publisher<? extends Collection<E>> data) {
         return Flux.from(data)
+                .filter(CollectionUtils::isNotEmpty)
                 .flatMap(e -> doInsert(e).reactive().flux())
-                .reduce(Math::addExact);
+                .reduce(Math::addExact)
+                .defaultIfEmpty(0);
     }
 
     @Override

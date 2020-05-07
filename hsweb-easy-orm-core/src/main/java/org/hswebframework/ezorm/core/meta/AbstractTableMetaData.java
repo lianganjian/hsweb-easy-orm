@@ -1,6 +1,7 @@
 package org.hswebframework.ezorm.core.meta;
 
 import org.hswebframework.ezorm.core.*;
+import org.hswebframework.ezorm.core.utils.StringUtils;
 
 import java.util.*;
 import java.util.function.Supplier;
@@ -54,8 +55,14 @@ public abstract class AbstractTableMetaData<C extends AbstractColumnMetaData> im
     public <T extends AbstractTableMetaData<C>> T addColumn(C columnMetaData) {
         columnMetaData.setTableMetaData(this);
         columnMetaDataMap.put(columnMetaData.getName(), columnMetaData);
-        if (!columnMetaData.getName().equals(columnMetaData.getAlias()))
-            aliasColumnMetaDataMap.put(columnMetaData.getAlias(), columnMetaData);
+        if (!columnMetaData.getName().equals(columnMetaData.getAlias())){
+            if(columnMetaData.getAlias()!=null){
+                aliasColumnMetaDataMap.put(columnMetaData.getAlias(), columnMetaData);
+            }else{
+                aliasColumnMetaDataMap
+                        .put(StringUtils.lineToHump(columnMetaData.getName().toLowerCase()), columnMetaData);
+            }
+        }
         return (T) this;
     }
 

@@ -49,7 +49,8 @@ public class SqlServerSelectSqlRender extends CommonSqlRender<QueryParam> {
             this.param = param;
             if (param.getIncludes().isEmpty() && param.getExcludes().isEmpty()) {
                 param.includes("*");
-                metaData.getCorrelations().forEach(correlation -> param.includes(correlation.getAlias() + ".*"));
+                metaData.getCorrelations().stream().filter(correlation -> correlation.isOne2one())
+                        .forEach(correlation -> param.includes(correlation.getAlias() + ".*"));
             }
             //解析要查询的字段
             this.selectField = parseOperationField(metaData, param);

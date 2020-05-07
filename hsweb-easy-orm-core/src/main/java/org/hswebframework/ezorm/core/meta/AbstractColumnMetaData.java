@@ -1,6 +1,7 @@
 package org.hswebframework.ezorm.core.meta;
 
 import org.hswebframework.ezorm.core.*;
+import org.hswebframework.ezorm.core.utils.StringUtils;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -25,7 +26,7 @@ public abstract class AbstractColumnMetaData implements ColumnMetaData {
 
     @Override
     public String getAlias() {
-        if (alias == null) alias = name;
+        if (alias == null) alias = StringUtils.lineToHump(name.toLowerCase());
         return alias;
     }
 

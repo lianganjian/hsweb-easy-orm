@@ -56,12 +56,7 @@ public abstract class AbstractTableMetaData<C extends AbstractColumnMetaData> im
         columnMetaData.setTableMetaData(this);
         columnMetaDataMap.put(columnMetaData.getName(), columnMetaData);
         if (!columnMetaData.getName().equals(columnMetaData.getAlias())){
-            if(columnMetaData.getAlias()!=null){
-                aliasColumnMetaDataMap.put(columnMetaData.getAlias(), columnMetaData);
-            }else{
-                aliasColumnMetaDataMap
-                        .put(StringUtils.lineToHump(columnMetaData.getName().toLowerCase()), columnMetaData);
-            }
+            aliasColumnMetaDataMap.put(columnMetaData.getAlias(), columnMetaData);
         }
         return (T) this;
     }

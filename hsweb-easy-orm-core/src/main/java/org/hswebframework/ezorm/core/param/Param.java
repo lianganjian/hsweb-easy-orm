@@ -125,6 +125,11 @@ public class Param implements Cloneable {
         return terms;
     }
 
+    public Term findTerm(String column) {
+        List<Term> sameTerms = terms.stream().filter(term -> column.equals(term.getColumn())).collect(Collectors.toList());
+        return sameTerms.isEmpty()?null:sameTerms.get(0);
+    }
+
     public void setTerms(List<Term> terms) {
         this.terms = terms;
     }
